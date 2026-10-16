@@ -14,6 +14,10 @@ Cierre.cpp:
 
 Resumen.cpp
 En dicho programa, se lee n cantidad de archivos semanales que fueron generados a partir del programa Cierre.cpp
+Se le pregunta al usuario al principio de la ejecución si desea añadir un archivo analizo. En caso de que el usuario no quiera añadir un archivo a analizar,
+el programa finaliza. Caso positivo que el usuario quiera realizar un análisis del archivo semanal, se le solicita el nombre de dicho archivo (respetando el
+formato de "comandas_semana_sX-mm.dat" y acto seguido se llama a una función, el cual consiste en un Corte de Control (por Id de Mozo) donde se va acumulando el 
+total de comisiones de cada Mozo, la cantidad de productos vendidos por cada mozo, y se obtiene las ventas totales
 
 
 
