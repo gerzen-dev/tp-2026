@@ -30,17 +30,3 @@ la semana.
 Al finalizar dicho corte de control, se le pregunta al usuario si quiere ingresar otro archivo semanal para analizar. Si responde que no(0) se termina el bucle
 while y finaliza el programa.
 
-
-## Qué se entrega
-
-- Este mismo repo (uno por grupo), con los **4 programas** `.cpp` en la raíz
-  (cada uno con su propio `main`, no hay `main.cpp`).
-- El **README** con el grupo, los integrantes (nombre + usuario de GitHub) y, si
-  hace falta, cualquier aclaración de cómo correrlo.
-- Los `.dat` de `datos/` son los **provistos por la cátedra** y ya vienen en el
-  repo: no los borren ni agreguen otros. Cualquier `.dat` que ustedes copien a la
-  raíz o generen al correr **no** se versiona (el `.gitignore` ya los deja afuera).
-  La cátedra corre sus programas sobre su propio dataset.
-- **Commits repartidos:** cada integrante tiene que tener commits propios a lo
-  largo del trabajo. El historial es parte de lo que se mira para la defensa
-  individual (no vale un único commit final ni que suba todo una sola persona).
