@@ -5,6 +5,7 @@ unidad de **archivos binarios en C/C++**.
 
 > **Grupo:** 10
 > **Integrantes:** Nombre: Gustavo Leonel Erzen - Usuario de GitHub: gerzen-dev
+                   Nombre: Nazareno Andres Battilocchi - Usuario de GitHub: nbattilocchi-bit
 > _(nombre — usuario de GitHub, uno por línea)_
 
 Explicación de cada Programa:
