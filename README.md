@@ -10,6 +10,12 @@ unidad de **archivos binarios en C/C++**.
 Explicación de cada Programa:
 -----------------------------
 
+Normalizacion.cpp
+el programa normalizacion.cpp comienza leyendo los archivos binarios y los carga en vectores, luego identifica las fechas unicas y en cada una filtra las comandas por el id de mozo y los ordena, terminando con el stock actualizando el archivo inventario.dat
+
+Ventas.cpp
+el programa ventas.cpp comienza leyendo los archivos binarios, luego comienza con el cifrado de las contraseñas con un desplazado simple de caracteres, crea (o abre) un archivo segun la fecha ingresada e inicia un bucle donde los mozos pueden, con su contraseña, agregar ventas. y al finalizar el dia el archivo se ordena y se guarda con la fecha ingresada, ademas de actualizar el stock en el inventario.dat
+
 Cierre.cpp:
 En este programa, recibe n cantidad de planillas diarias que fueron traídas desde normalizacion.cpp o fueron creadas en ventas.cpp. El programa le pide al 
 usuario que ingrese el nombre del archivo semanal (respetando el formato "comandas_semana_sX-mm.dat") donde se colocará el contenido de las planillas diarias.
