@@ -3,235 +3,477 @@
 #include <cstdio>
 using namespace std;
 
-struct comandas_historicas{
+struct ComandaHistorica {
     char fecha[11];
-    char nombreMozo[50];
+    char NombreMozo[50];
     int codigoProducto;
     int cantidad;
     float comision;
 };
 
-struct producto{
+struct Comanda {
+    int idMozo;
+    int codigoProducto;
+    int cantidad;
+    float comision;
+};
+
+struct Mozo {
+    int   idMozo;
+    char  nombre[50];
+    char  password[20];
+    float totalComision;
+};
+
+struct Producto {
     int codigo;
     char descripcion[50];
     float precio;
     int stockActual;
 };
 
-struct mozo{
-    int idMozo;
-    char nombre[50];
-    char password[20];
-    float totalComision;
-};
+const int MAX_MOZOS = 1000;
+const int MAX_FECHAS = 1000;
+const int MAX_PRODUCTOS = 2000;
 
-struct comanda{
-    int idMozo;
-    int codigoProducto;
-    int cantidad;
-    float comision;
-};
-
-const int MAX_PRODUCTOS = 100;
-const int MAX_HIST      = 500;
-const int MAX_MOZOS     = 50;
-const int MAX_DIAS      = 62;
-const int DESPLAZAMIENTO = 7;   
-
-void encriptar(const char *origen, char *destino, int tam){
+void copiarCadena(char destino[], const char origen[], int tamanio) {
     int i = 0;
-    while(origen[i] != '\0' && i < tam - 1){
-        destino[i] = (char)((unsigned char)origen[i] + DESPLAZAMIENTO);
+
+    while (i < tamanio - 1 && origen[i] != '\0') {
+        destino[i] = origen[i];
         i++;
     }
+
     destino[i] = '\0';
 }
 
-void desencriptar(const char *origen, char *destino, int tam){
-    int i = 0;
-    while(origen[i] != '\0' && i < tam - 1){
-        destino[i] = (char)((unsigned char)origen[i] - DESPLAZAMIENTO);
-        i++;
-    }
-    destino[i] = '\0';
-}
+void extraerApellido(char destino[], const char nombre[], int tamanio) {
+    int inicio = 0;
 
-bool verificarPassword(const mozo &m, const char *intento){
-    char tmp[20];
-    encriptar(intento, tmp, 20);
-    return strcmp(tmp, m.password) == 0;
-}
-
-void ordenarPorMozo(comanda v[], int n){
-    for(int i = 1; i < n; i++){
-        comanda aux = v[i];
-        int j = i - 1;
-        while(j >= 0 && v[j].idMozo > aux.idMozo){
-            v[j + 1] = v[j];
-            j--;
+    for (int i = 0; nombre[i] != '\0'; i++) {
+        if (nombre[i] == ' ') {
+            inicio = i + 1;
         }
-        v[j + 1] = aux;
     }
+
+    copiarCadena(destino, nombre + inicio, tamanio);
 }
 
-int buscarMozo(mozo mozos[], int cant, const char *nombre){
-    for(int i = 0; i < cant; i++)
-        if(strcmp(mozos[i].nombre, nombre) == 0) return i;
+void armarNombreDiario(char destino[], const char fecha[]) {
+    const char prefijo[] = "comandas_";
+    const char sufijo[] = ".dat";
+    int pos = 0;
+
+    for (int i = 0; prefijo[i] != '\0'; i++) {
+        destino[pos++] = prefijo[i];
+    }
+
+    for (int i = 0; i < 10 && fecha[i] != '\0'; i++) {
+        destino[pos++] = fecha[i];
+    }
+
+    for (int i = 0; sufijo[i] != '\0'; i++) {
+        destino[pos++] = sufijo[i];
+    }
+
+    destino[pos] = '\0';
+}
+
+int buscarMozo(Mozo mozos[], int cantidad, const char nombre[]) {
+    for (int i = 0; i < cantidad; i++) {
+        if (strcmp(mozos[i].nombre, nombre) == 0) {
+            return i;
+        }
+    }
     return -1;
 }
 
-int buscarProducto(producto prods[], int cant, int codigo){
-    for(int i = 0; i < cant; i++)
-        if(prods[i].codigo == codigo) return i;
+int buscarFecha(char fechas[][11], int cantidad, const char fecha[]) {
+    for (int i = 0; i < cantidad; i++) {
+        if (strcmp(fechas[i], fecha) == 0) {
+            return i;
+        }
+    }
     return -1;
 }
 
-void imprimirPassword(const char *pass){
-    for(int i = 0; pass[i] != '\0'; i++)
-        printf("%d ", (unsigned char)pass[i]);
+int buscarProducto(Producto productos[], int cantidad, int codigo) {
+    for (int i = 0; i < cantidad; i++) {
+        if (productos[i].codigo == codigo) {
+            return i;
+        }
+    }
+    return -1;
 }
 
-int main(){
-    producto productos[MAX_PRODUCTOS];
-    comandas_historicas hist[MAX_HIST];
-    mozo mozos[MAX_MOZOS];
-    int idDeHist[MAX_HIST];
-    char fechas[MAX_DIAS][11];
-    int cantProd = 0, cantHist = 0, cantMozos = 0, cantDias = 0;
+bool generarMozos(Mozo mozos[], int cantidad) {
+    FILE* archivo = fopen("mozos.dat", "wb");
 
-    FILE *f = fopen("inventario.dat", "rb");
-    if(!f){ cout << "No se pudo abrir inventario.dat" << endl; return 1; }
-    cantProd = (int)fread(productos, sizeof(producto), MAX_PRODUCTOS, f);
-    fclose(f);
+    if (archivo == NULL) {
+        cout << "Error al crear mozos.dat" << endl;
+        return false;
+    }
 
-    f = fopen("comandas_historicas.dat", "rb");
-    if(!f){ cout << "No se pudo abrir comandas_historicas.dat" << endl; return 1; }
-    cantHist = (int)fread(hist, sizeof(comandas_historicas), MAX_HIST, f);
-    fclose(f);
+    for (int i = 0; i < cantidad; i++) {
+        Mozo registro;
+        memset(&registro, 0, sizeof(Mozo));
 
-    for(int i = 0; i < cantHist; i++){
-        int pos = buscarMozo(mozos, cantMozos, hist[i].nombreMozo);
-        if(pos == -1){
-            if(cantMozos >= MAX_MOZOS){ cout << "Demasiados mozos" << endl; return 1; }
-            pos = cantMozos++;
-            mozos[pos].idMozo = pos + 1;
-            strcpy(mozos[pos].nombre, hist[i].nombreMozo);
-            encriptar(hist[i].nombreMozo, mozos[pos].password, 20);
-            mozos[pos].totalComision = 0;
+        registro.idMozo = i + 1;
+        copiarCadena(registro.nombre, mozos[i].nombre, sizeof(registro.nombre));
+        copiarCadena(registro.password, mozos[i].password, sizeof(registro.password));
+        registro.totalComision = mozos[i].totalComision;
+
+        if (fwrite(&registro, sizeof(Mozo), 1, archivo) != 1) {
+            cout << "Error al escribir mozos.dat" << endl;
+            fclose(archivo);
+            return false;
         }
-        mozos[pos].totalComision += hist[i].comision;
-        idDeHist[i] = mozos[pos].idMozo;
     }
 
-    f = fopen("mozos.dat", "wb");
-    if(!f){ cout << "No se pudo crear mozos.dat" << endl; return 1; }
-    for(int i = 0; i < cantMozos; i++){
-        fwrite(&mozos[i].idMozo, sizeof(int), 1, f);
-        fwrite(mozos[i].nombre, sizeof(char), 50, f);
-        fwrite(mozos[i].password, sizeof(char), 20, f);
-    }
-    fclose(f);
+    fclose(archivo);
+    return true;
+}
 
-    for(int i = 0; i < cantHist; i++){
-        bool existe = false;
-        for(int d = 0; d < cantDias; d++)
-            if(strcmp(fechas[d], hist[i].fecha) == 0){ existe = true; break; }
-        if(!existe && cantDias < MAX_DIAS)
-            strcpy(fechas[cantDias++], hist[i].fecha);
+bool crearArchivosDiarios(char fechas[][11], int cantidadFechas) {
+    for (int i = 0; i < cantidadFechas; i++) {
+        char nombreArchivo[40];
+        armarNombreDiario(nombreArchivo, fechas[i]);
+
+        FILE* archivo = fopen(nombreArchivo, "wb");
+
+        if (archivo == NULL) {
+            cout << "Error al crear " << nombreArchivo << endl;
+            return false;
+        }
+
+        fclose(archivo);
     }
 
-    for(int d = 0; d < cantDias; d++){
-        comanda dia[MAX_HIST];
-        int n = 0;
-        for(int i = 0; i < cantHist; i++){
-            if(strcmp(hist[i].fecha, fechas[d]) == 0){
-                dia[n].idMozo         = idDeHist[i];
-                dia[n].codigoProducto = hist[i].codigoProducto;
-                dia[n].cantidad       = hist[i].cantidad;
-                dia[n].comision       = hist[i].comision;
-                n++;
+    return true;
+}
+
+bool distribuirComandas(Mozo mozos[], int cantidadMozos) {
+    FILE* historico = fopen("comandas_historicas.dat", "rb");
+
+    if (historico == NULL) {
+        cout << "Error al abrir comandas_historicas.dat" << endl;
+        return false;
+    }
+
+    ComandaHistorica historica;
+
+    while (fread(&historica, sizeof(ComandaHistorica), 1, historico) == 1) {
+
+        int posMozo = buscarMozo(mozos, cantidadMozos, historica.NombreMozo);
+
+        if (posMozo == -1) {
+            cout << "Mozo no encontrado: " << historica.NombreMozo << endl;
+            fclose(historico);
+            return false;
+        }
+
+        Comanda comanda;
+        memset(&comanda, 0, sizeof(Comanda));
+        comanda.idMozo = mozos[posMozo].idMozo;
+        comanda.codigoProducto = historica.codigoProducto;
+        comanda.cantidad = historica.cantidad;
+        comanda.comision = historica.comision;
+
+        char nombreArchivo[40];
+        armarNombreDiario(nombreArchivo, historica.fecha);
+
+        FILE* diario = fopen(nombreArchivo, "ab");
+
+        if (diario == NULL) {
+            cout << "Error al abrir " << nombreArchivo << endl;
+            fclose(historico);
+            return false;
+        }
+
+        if (fwrite(&comanda, sizeof(Comanda), 1, diario) != 1) {
+            cout << "Error al escribir " << nombreArchivo << endl;
+            fclose(diario);
+            fclose(historico);
+            return false;
+        }
+
+        fclose(diario);
+    }
+
+    bool errorLectura = ferror(historico);
+    fclose(historico);
+
+    if (errorLectura) {
+        cout << "Error al leer el historico" << endl;
+        return false;
+    }
+
+    return true;
+}
+
+bool actualizarInventario() {
+    Producto productos[MAX_PRODUCTOS];
+    bool modificado[MAX_PRODUCTOS] = { false };
+    int cantidadProductos = 0;
+
+    FILE* inventario = fopen("inventario.dat", "rb");
+
+    if (inventario == NULL) {
+        cout << "Error al abrir inventario.dat" << endl;
+        return false;
+    }
+
+    while (cantidadProductos < MAX_PRODUCTOS &&
+           fread(&productos[cantidadProductos],
+                 sizeof(Producto), 1, inventario) == 1) {
+        cantidadProductos++;
+    }
+
+    bool errorLectura = ferror(inventario);
+    fclose(inventario);
+
+    if (errorLectura) {
+        cout << "Error al leer inventario.dat" << endl;
+        return false;
+    }
+
+    if (cantidadProductos == MAX_PRODUCTOS) {
+        cout << "Se alcanzo el limite de productos" << endl;
+        return false;
+    }
+
+    FILE* historico = fopen("comandas_historicas.dat", "rb");
+
+    if (historico == NULL) {
+        cout << "Error al abrir comandas_historicas.dat" << endl;
+        return false;
+    }
+
+    ComandaHistorica comanda;
+
+    while (fread(&comanda, sizeof(ComandaHistorica), 1, historico) == 1) {
+
+        int pos = buscarProducto(productos, cantidadProductos, comanda.codigoProducto);
+
+        if (pos == -1) {
+            cout << "Producto no encontrado: "
+                 << comanda.codigoProducto << endl;
+            fclose(historico);
+            return false;
+        }
+
+        productos[pos].stockActual -= comanda.cantidad;
+        modificado[pos] = true;
+
+        if (productos[pos].stockActual < 0) {
+            cout << "Advertencia: stock negativo para "
+                 << productos[pos].descripcion << endl;
+        }
+    }
+
+    errorLectura = ferror(historico);
+    fclose(historico);
+
+    if (errorLectura) {
+        cout << "Error al leer comandas_historicas.dat" << endl;
+        return false;
+    }
+
+    inventario = fopen("inventario.dat", "r+b");
+
+    if (inventario == NULL) {
+        cout << "Error al abrir inventario.dat para modificarlo" << endl;
+        return false;
+    }
+
+    bool escrituraCorrecta = true;
+
+    for (int i = 0; i < cantidadProductos; i++) {
+        if (!modificado[i]) {
+            continue;
+        }
+
+        if (fseek(inventario, (long)i * (long)sizeof(Producto), SEEK_SET) != 0 ||
+            fwrite(&productos[i], sizeof(Producto), 1, inventario) != 1) {
+            cout << "Error al actualizar el producto " << productos[i].codigo << endl;
+            escrituraCorrecta = false;
+            break;
+        }
+    }
+
+    if (fclose(inventario) != 0) {
+        escrituraCorrecta = false;
+    }
+
+    return escrituraCorrecta;
+}
+
+void mostrarMozos() {
+    FILE* archivo = fopen("mozos.dat", "rb");
+
+    if (archivo == NULL) {
+        cout << "Error al abrir mozos.dat" << endl;
+        return;
+    }
+
+    Mozo mozo;
+
+    cout << "          " << "MOZOS" << "          " << endl;
+    cout << "Numero\tNombre\t\tPassword\tComision acumulada" << endl;
+
+    while (fread(&mozo, sizeof(Mozo), 1, archivo) == 1) {
+        cout << mozo.idMozo << "\t" << mozo.nombre << "\t" << mozo.password
+             << "\t\t" << mozo.totalComision << "\n";
+    }
+
+    if (ferror(archivo)) {
+        cout << "Error al leer mozos.dat" << endl;
+    }
+
+    fclose(archivo);
+}
+
+void mostrarComandas(const char nombreArchivo[]) {
+    FILE* archivo = fopen(nombreArchivo, "rb");
+
+    if (archivo == NULL) {
+        cout << "Error al abrir " << nombreArchivo << endl;
+        return;
+    }
+
+    Comanda comanda;
+
+    cout << endl;
+    cout << "          " << nombreArchivo << "          " << endl;
+    cout << "IdMozo\tCodigo\tCantidad\tComision" << endl;
+
+    while (fread(&comanda, sizeof(Comanda), 1, archivo) == 1) {
+        cout << comanda.idMozo << "\t" << comanda.codigoProducto << "\t"
+             << comanda.cantidad << "\t\t" << comanda.comision << "\n";
+    }
+
+    if (ferror(archivo)) {
+        cout << "Error al leer " << nombreArchivo << endl;
+    }
+
+    fclose(archivo);
+}
+
+void mostrarInventario() {
+    FILE* archivo = fopen("inventario.dat", "rb");
+
+    if (archivo == NULL) {
+        cout << "Error al abrir inventario.dat" << endl;
+        return;
+    }
+
+    Producto producto;
+
+    cout << "            " << "INVENTARIO" << "            " << endl;
+    cout << "Codigo\tDescripcion\t\tPrecio\tStock" << endl;
+
+    while (fread(&producto, sizeof(Producto), 1, archivo) == 1) {
+        if (producto.codigo == 105 || producto.codigo == 112 || producto.codigo == 130) {
+            cout << producto.codigo << "\t" << producto.descripcion << "\t" << producto.precio << "\t" << producto.stockActual << endl;
+        }
+        else {
+            cout << producto.codigo << "\t" << producto.descripcion << "\t\t" << producto.precio << "\t" << producto.stockActual << endl;
+        }
+    }
+
+    if (ferror(archivo)) {
+        cout << "Error al leer inventario.dat" << endl;
+    }
+
+    fclose(archivo);
+}
+
+int main() {
+    Mozo mozos[MAX_MOZOS];
+    int cantidadMozos = 0;
+
+    char fechas[MAX_FECHAS][11];
+    int cantidadFechas = 0;
+
+    FILE* historico = fopen("comandas_historicas.dat", "rb");
+
+    if (historico == NULL) {
+        cout << "No se pudo abrir comandas_historicas.dat" << endl;
+        return 1;
+    }
+
+    ComandaHistorica comanda;
+
+    while (fread(&comanda, sizeof(ComandaHistorica), 1, historico) == 1) {
+
+        int posMozo = buscarMozo(mozos, cantidadMozos, comanda.NombreMozo);
+
+        if (posMozo == -1) {
+            if (cantidadMozos >= MAX_MOZOS) {
+                cout << "Se alcanzo el limite de mozos" << endl;
+                fclose(historico);
+                return 1;
             }
+
+            posMozo = cantidadMozos;
+
+            memset(&mozos[posMozo], 0, sizeof(Mozo));
+            copiarCadena(mozos[posMozo].nombre, comanda.NombreMozo, sizeof(mozos[posMozo].nombre));
+            extraerApellido(mozos[posMozo].password, mozos[posMozo].nombre, sizeof(mozos[posMozo].password));
+            mozos[posMozo].totalComision = 0;
+            mozos[posMozo].idMozo = cantidadMozos + 1;
+
+            cantidadMozos++;
         }
-        ordenarPorMozo(dia, n);
 
-        char nombreArchivo[40];
-        sprintf(nombreArchivo, "comandas_%s.dat", fechas[d]);
-        f = fopen(nombreArchivo, "wb");
-        if(!f){ cout << "No se pudo crear " << nombreArchivo << endl; return 1; }
-        size_t escritos = fwrite(dia, sizeof(comanda), n, f);
-        fflush(f);
-        if(fclose(f) != 0 || (int)escritos != n)
-            cout << "ERROR al escribir " << nombreArchivo << " (" << escritos << " de " << n << " registros)" << endl;
-        else
-            cout << "Guardado " << nombreArchivo << ": " << n << " comandas" << endl;
-    }
+        mozos[posMozo].totalComision += comanda.comision;
 
-    for(int i = 0; i < cantHist; i++){
-        int p = buscarProducto(productos, cantProd, hist[i].codigoProducto);
-        if(p == -1){
-            cout << "Aviso: producto " << hist[i].codigoProducto << " inexistente en inventario" << endl;
-        } else if(productos[p].stockActual < hist[i].cantidad){
-            cout << "Aviso: stock insuficiente del producto " << productos[p].codigo
-                 << " (" << productos[p].descripcion << "), queda en 0" << endl;
-            productos[p].stockActual = 0;
-        } else {
-            productos[p].stockActual -= hist[i].cantidad;
+        if (buscarFecha(fechas, cantidadFechas, comanda.fecha) == -1) {
+
+            if (cantidadFechas >= MAX_FECHAS) {
+                cout << "Se alcanzo el limite de fechas" << endl;
+                fclose(historico);
+                return 1;
+            }
+
+            copiarCadena(fechas[cantidadFechas], comanda.fecha, 11);
+            cantidadFechas++;
         }
     }
-    f = fopen("inventario.dat", "wb");
-    if(!f){ cout << "No se pudo escribir inventario.dat" << endl; return 1; }
-    fwrite(productos, sizeof(producto), cantProd, f);
-    fclose(f);
 
-    cout << "     " << " MOZOS (mozos.dat) " << " " << endl;
-    f = fopen("mozos.dat", "rb");
-    if(f){
-        mozo m;
-        while(fread(&m.idMozo, sizeof(int), 1, f) == 1 &&
-              fread(m.nombre, sizeof(char), 50, f) == 50 &&
-              fread(m.password, sizeof(char), 20, f) == 20){
-            char claro[20];
-            desencriptar(m.password, claro, 20);
-            printf("Mozo %d: %s", m.idMozo, m.nombre);
-            printf("   Password encriptado (codigos ASCII+7): ");
-            imprimirPassword(m.password);
-            printf("\n   Password desencriptado (texto): %s", claro);
-            printf("   Comision total*: $%.2f", mozos[m.idMozo - 1].totalComision);
-        }
-        fclose(f);
-        cout << "* La comision NO se guarda en mozos.dat; se calcula al procesar." << endl;
+    bool errorLectura = ferror(historico);
+    fclose(historico);
+
+    if (errorLectura) {
+        cout << "Error al leer el archivo historico" << endl;
+        return 1;
     }
 
-    cout << "     " << "VERIFICACION DE PASSWORDS" << " " << endl;
-    for(int i = 0; i < cantMozos; i++){
-        printf("%-20s password=nombre: %-9s | password 'incorrecta': %s\n",
-               mozos[i].nombre,
-               verificarPassword(mozos[i], mozos[i].nombre) ? "ACEPTADO" : "RECHAZADO",
-               verificarPassword(mozos[i], "incorrecta") ? "ACEPTADO" : "RECHAZADO");
+    if (!generarMozos(mozos, cantidadMozos)) {
+        return 1;
     }
 
-    for(int d = 0; d < cantDias; d++){
-        char nombreArchivo[40];
-        sprintf(nombreArchivo, "comandas_%s.dat", fechas[d]);
-        cout << "\n===== " << nombreArchivo << " =====" << endl;
-        f = fopen(nombreArchivo, "rb");
-        if(!f) continue;
-        comanda c;
-        printf("%-7s %-10s %-9s %s\n", "Mozo", "Producto", "Cantidad", "Comision");
-        while(fread(&c, sizeof(comanda), 1, f) == 1)
-            printf("%-7d %-10d %-9d $%.2f\n", c.idMozo, c.codigoProducto, c.cantidad, c.comision);
-        fclose(f);
+    if (!crearArchivosDiarios(fechas, cantidadFechas)) {
+        return 1;
     }
 
-    cout << "\n===== INVENTARIO ACTUALIZADO (inventario.dat) =====" << endl;
-    f = fopen("inventario.dat", "rb");
-    if(f){
-        producto p;
-        printf("%-8s %-20s %-10s %s\n", "Codigo", "Descripcion", "Precio", "Stock");
-        while(fread(&p, sizeof(producto), 1, f) == 1)
-            printf("%-8d %-20s $%-9.2f %d\n", p.codigo, p.descripcion, p.precio, p.stockActual);
-        fclose(f);
+    if (!distribuirComandas(mozos, cantidadMozos)) {
+        return 1;
     }
+
+    if (!actualizarInventario()) {
+        return 1;
+    }
+
+    mostrarMozos();
+
+    mostrarComandas("comandas_02-06-2025.dat");
+
+    mostrarComandas("comandas_03-06-2025.dat");
+
+    mostrarComandas("comandas_04-06-2025.dat");
+
+    mostrarInventario();
 
     return 0;
 }

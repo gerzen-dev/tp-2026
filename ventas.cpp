@@ -3,317 +3,412 @@
 #include <cstdio>
 using namespace std;
 
-struct comandas_historicas{
-    char fecha[11];
-    char nombreMozo[50];
-    int codigoProducto;
-    int cantidad;
-    float comision;
-};
-struct producto{
-    int codigo;
-    char descripcion[50];
-    float precio;
-    int stockActual;
-};
-struct mozo{
-    int idMozo;
-    char nombre[50];
-    char password[20];
+struct Mozo {
+    int   idMozo;
+    char  nombre[50];
+    char  password[20];
     float totalComision;
 };
-struct comanda{
-    int idMozo;
-    int codigoProducto;
-    int cantidad;
+
+struct Producto {
+    int   codigo;
+    char  descripcion[50];
+    float precio;
+    int   stockActual;
+};
+
+struct Comanda {
+    int   idMozo;
+    int   codigoProducto;
+    int   cantidad;
     float comision;
 };
 
-const int MAX_MOZOS = 50;
-const int MAX_PROD  = 100;
-const int MAX_DIA   = 1000;
-const int INTENTOS  = 3;
-const int CLAVE     = 7;        // las claves de mozos.dat estan desplazadas +7 por caracter
-const float PORC_COMISION = 0.10f;
+const int   MAX_ITEMS = 10;          
+const float PORC_COMISION = 0.10f;   
 
-bool entradaCerrada = false;    // se pone en true si se corta la entrada (Ctrl+D / fin de archivo)
-
-// ---------------------------------------------------------------- entrada
-void leerLinea(const char* msg, char* buf, int n){
-    cout << msg;
-    if(!cin.getline(buf, n)){
-        if(cin.eof()){ entradaCerrada = true; buf[0] = '\0'; return; }
-        cin.clear();                    // linea demasiado larga: se descarta el resto
-        cin.ignore(10000, '\n');
-        buf[0] = '\0';
+void agregarNumero(char* dest, int valor, int digitos) {
+    if (digitos == 0) {
+        int t = valor;
+        digitos = 1;
+        while (t >= 10) { t /= 10; digitos++; }
     }
-}
-
-bool leerEntero(const char* msg, int &valor){
-    char buf[64], extra;
-    leerLinea(msg, buf, sizeof(buf));
-    if(entradaCerrada) return false;
-    return sscanf(buf, "%d %c", &valor, &extra) == 1;
-}
-
-// ---------------------------------------------------------------- utilidades
-void cifrar(const char* origen, char* destino){
-    int i = 0;
-    for(; origen[i] != '\0'; i++)
-        destino[i] = (char)((unsigned char)origen[i] + CLAVE);
-    destino[i] = '\0';
-}
-
-bool fechaValida(int d, int m, int a){
-    if(a < 2000 || a > 2100 || m < 1 || m > 12 || d < 1) return false;
-    int dias[] = {31,28,31,30,31,30,31,31,30,31,30,31};
-    if(m == 2 && ((a % 4 == 0 && a % 100 != 0) || a % 400 == 0)) dias[1] = 29;
-    return d <= dias[m-1];
-}
-
-void pedirFecha(char* fecha){
-    char buf[64], extra;
-    int d, m, a;
-    while(!entradaCerrada){
-        leerLinea("Fecha de hoy (dd-mm-aaaa): ", buf, sizeof(buf));
-        if(entradaCerrada) return;
-        if(sscanf(buf, "%d-%d-%d %c", &d, &m, &a, &extra) == 3 && fechaValida(d, m, a)){
-            sprintf(fecha, "%02d-%02d-%04d", d, m, a);
-            return;
-        }
-        cout << "Fecha invalida. Use el formato dd-mm-aaaa.\n";
+    int largo = (int)strlen(dest);
+    for (int i = digitos - 1; i >= 0; i--) {
+        dest[largo + i] = (char)('0' + valor % 10);
+        valor /= 10;
     }
+    dest[largo + digitos] = '\0';
 }
 
-// ---------------------------------------------------------------- archivos
-int cargarMozos(mozo* m){
+bool validarClave(const char* passwordMozo, const char* claveIngresada) {
+    return strcmp(passwordMozo, claveIngresada) == 0;
+}
+
+bool buscarMozo(int id, Mozo& m) {
     FILE* f = fopen("mozos.dat", "rb");
-    if(!f) return 0;
-    int n = 0;
-    // mozos.dat guarda por registro: idMozo(4) + nombre(50) + password(20) = 74 bytes.
-    // Se lee campo por campo (no con sizeof(mozo)) porque el archivo no trae totalComision.
-    while(n < MAX_MOZOS &&
-          fread(&m[n].idMozo, sizeof(int), 1, f) == 1 &&
-          fread(m[n].nombre, sizeof(m[n].nombre), 1, f) == 1 &&
-          fread(m[n].password, sizeof(m[n].password), 1, f) == 1){
-        m[n].totalComision = 0;
-        n++;
+    if (!f) { cout << "No se pudo abrir mozos.dat" << endl; return false; }
+    bool ok = false;
+    while (fread(&m, sizeof(Mozo), 1, f) == 1) {
+        if (m.idMozo == id) { ok = true; break; }
     }
     fclose(f);
-    return n;
+    return ok;
 }
 
-int cargarInventario(producto* p){
+bool buscarProducto(int codigo, Producto& p) {
     FILE* f = fopen("inventario.dat", "rb");
-    if(!f) return 0;
-    int n = (int)fread(p, sizeof(producto), MAX_PROD, f);
-    fclose(f);
-    return n;
-}
-
-bool guardarInventario(producto* p, int n){
-    FILE* f = fopen("inventario.dat", "wb");
-    if(!f) return false;
-    fwrite(p, sizeof(producto), n, f);
-    fclose(f);
-    return true;
-}
-
-// Formato de comandas_dd-mm-aaaa.dat: registros de struct comanda
-// (idMozo, codigoProducto, cantidad, comision = 16 bytes). La fecha esta en el nombre del archivo.
-int buscarProducto(producto* p, int n, int codigo);
-
-int cargarDia(const char* archivo, comanda* dia, producto* p, int nP, bool &reparado){
-    FILE* f = fopen(archivo, "ab");     // lo crea si no existe
-    if(f) fclose(f);
-    f = fopen(archivo, "rb");
-    if(!f) return 0;
-    int n = 0;
-    reparado = false;
-    while(n < MAX_DIA){
-        comanda c;
-        if(fread(&c.idMozo, sizeof(int), 1, f) != 1) break;
-        if(fread(&c.codigoProducto, sizeof(int), 1, f) != 1) break;
-        if(fread(&c.cantidad, sizeof(int), 1, f) != 1) break;
-        if(fread(&c.comision, sizeof(float), 1, f) != 1){
-            // registro cortado (falta la comision): se recalcula como 10% del total
-            int pos = buscarProducto(p, nP, c.codigoProducto);
-            c.comision = (pos >= 0) ? p[pos].precio * c.cantidad * PORC_COMISION : 0;
-            reparado = true;
-        }
-        dia[n++] = c;
+    if (!f) { cout << "No se pudo abrir inventario.dat" << endl; return false; }
+    bool ok = false;
+    while (fread(&p, sizeof(Producto), 1, f) == 1) {
+        if (p.codigo == codigo) { ok = true; break; }
     }
     fclose(f);
-    return n;
+    return ok;
 }
 
-bool guardarDia(const char* archivo, comanda* dia, int n){
-    FILE* f = fopen(archivo, "wb");
-    if(!f) return false;
-    fwrite(dia, sizeof(comanda), n, f);
+bool descontarStock(int codigo, int cantidad) {
+    FILE* f = fopen("inventario.dat", "rb+");
+    if (!f) { cout << "No se pudo abrir inventario.dat" << endl; return false; }
+    Producto p;
+    bool ok = false;
+    while (fread(&p, sizeof(Producto), 1, f) == 1) {
+        if (p.codigo == codigo) {
+            if (p.stockActual >= cantidad) {
+                p.stockActual -= cantidad;
+                fseek(f, -(long)sizeof(Producto), SEEK_CUR);
+                fwrite(&p, sizeof(Producto), 1, f);
+                ok = true;
+            }
+            break;
+        }
+    }
     fclose(f);
+    return ok;
+}
+
+int contarComandas(FILE* f) {
+    fseek(f, 0, SEEK_END);
+    long bytes = ftell(f);
+    return (int)(bytes / (long)sizeof(Comanda));
+}
+
+void ordenarPlanilla(FILE* f) {
+    int n = contarComandas(f);
+    Comanda a, b;
+
+    for (int i = 0; i < n - 1; i++) {
+        bool huboCambio = false;
+        for (int j = 0; j < n - 1 - i; j++) {
+            long pos = (long)j * (long)sizeof(Comanda);
+
+            fseek(f, pos, SEEK_SET);
+            fread(&a, sizeof(Comanda), 1, f);
+            fread(&b, sizeof(Comanda), 1, f);
+
+            if (a.idMozo > b.idMozo) {
+                fseek(f, pos, SEEK_SET);
+                fwrite(&b, sizeof(Comanda), 1, f);
+                fwrite(&a, sizeof(Comanda), 1, f);
+                huboCambio = true;
+            }
+        }
+        if (!huboCambio) break;   
+    }
+    fflush(f);
+}
+
+void mostrarPlanilla(FILE* f, const char* nombreArchivo) {
+    int n = contarComandas(f);
+    Comanda c;
+    double totalDia = 0, comisionDia = 0;
+
+    cout << " " << endl;
+    cout << " PLANILLA DEL DIA: " << nombreArchivo << endl;
+    cout << " " << endl;
+
+    rewind(f);
+    for (int i = 0; i < n; i++) {
+        if (fread(&c, sizeof(Comanda), 1, f) != 1) break;
+
+        Mozo m;
+        char nombreMozo[50];
+        if (buscarMozo(c.idMozo, m)) strcpy(nombreMozo, m.nombre);
+        else strcpy(nombreMozo, "(desconocido)");
+
+        double importe = c.comision / PORC_COMISION;
+
+        cout << "Mozo " << c.idMozo << " - " << nombreMozo << " | ";
+        if (c.codigoProducto == 0) {
+            cout << c.cantidad << " items (detalle no disponible - planilla anterior)";
+        } else {
+            Producto p;
+            if (!buscarProducto(c.codigoProducto, p)) strcpy(p.descripcion, "(desconocido)");
+            cout << c.cantidad << " x " << p.descripcion;
+        }
+        cout << " = $" << importe << " | Comision: $" << c.comision << endl;
+
+        totalDia += importe;
+        comisionDia += c.comision;
+    }
+
+    cout << " " << endl;
+    cout << " Lineas de venta: " << n << endl;
+    cout << " Total vendido:   $" << totalDia << endl;
+    cout << " Comisiones:      $" << comisionDia << endl;
+    cout << endl;
+}
+
+struct ComandaVieja {
+    int   idMozo;
+    int   cantidad;
+    float total;
+    char  fecha[11];
+    char  nombreMozo[50];
+};   
+
+const int MAX_VIEJAS = 2000;
+
+bool registroViejoValido(const ComandaVieja& r) {
+    if (r.idMozo <= 0 || r.idMozo > 99999) return false;
+    if (r.cantidad <= 0 || r.cantidad > 1000) return false;
+    if (!(r.total > 0) || r.total > 1e9f || r.total != r.total) return false;
+    const char* f = r.fecha;
+    if (strlen(f) != 10 || f[2] != '-' || f[5] != '-') return false;
+    for (int i = 0; i < 10; i++)
+        if (i != 2 && i != 5 && (f[i] < '0' || f[i] > '9')) return false;
+    size_t n = 0;
+    while (n < sizeof(r.nombreMozo) && r.nombreMozo[n] != '\0') n++;
+    if (n == 0 || n >= sizeof(r.nombreMozo)) return false;
+    for (size_t i = 0; i < n; i++)
+        if ((unsigned char)r.nombreMozo[i] < 32) return false;
     return true;
 }
 
-// ---------------------------------------------------------------- busquedas
-int buscarProducto(producto* p, int n, int codigo){
-    for(int i = 0; i < n; i++) if(p[i].codigo == codigo) return i;
-    return -1;
-}
-int buscarMozo(mozo* m, int n, int id){
-    for(int i = 0; i < n; i++) if(m[i].idMozo == id) return i;
-    return -1;
-}
-
-// ---------------------------------------------------------------- venta
-bool validarMozo(mozo* m, int n, int id){
-    int pos = buscarMozo(m, n, id);
-    if(pos < 0){ cout << "No existe un mozo con ese id.\n"; return false; }
-    char buf[64], cifrada[64];
-    for(int i = 1; i <= INTENTOS; i++){
-        leerLinea("Password: ", buf, sizeof(buf));
-        if(entradaCerrada) return false;
-        cifrar(buf, cifrada);
-        if(strcmp(cifrada, m[pos].password) == 0){
-            cout << "Mozo validado: " << m[pos].nombre << "\n";
+bool esFormatoViejo(FILE* f) {
+    fseek(f, 0, SEEK_END);
+    long bytes = ftell(f);
+    if (bytes == 0) return false;
+    if (bytes % (long)sizeof(Comanda) != 0) return true;
+    if (bytes >= (long)sizeof(ComandaVieja)) {
+        ComandaVieja r;
+        rewind(f);
+        if (fread(&r, sizeof(ComandaVieja), 1, f) == 1 && registroViejoValido(r))
             return true;
-        }
-        cout << "Password incorrecto (" << i << "/" << INTENTOS << ").\n";
     }
     return false;
 }
 
-// ---------------------------------------------------------------- orden y pantalla
-void ordenarPorMozo(comanda* d, int n){
-    // burbuja estable: dentro de un mismo mozo se conserva el orden de carga
-    for(int i = 0; i < n - 1; i++)
-        for(int j = 0; j < n - 1 - i; j++)
-            if(d[j].idMozo > d[j+1].idMozo){
-                comanda aux = d[j]; d[j] = d[j+1]; d[j+1] = aux;
+int leerPlanillaVieja(FILE* f, ComandaVieja* out, int maxOut, int& bytesSaltados) {
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    rewind(f);
+    char* buf = new char[size > 0 ? size : 1];
+    size_t leidos = fread(buf, 1, size, f);
+    long total = (long)leidos;
+
+    int n = 0;
+    bytesSaltados = 0;
+    long pos = 0;
+    while (pos + (long)sizeof(ComandaVieja) <= total && n < maxOut) {
+        ComandaVieja r;
+        memcpy(&r, buf + pos, sizeof(ComandaVieja));
+        if (registroViejoValido(r)) {
+            out[n++] = r;
+            pos += sizeof(ComandaVieja);
+        } else {
+            pos++;
+            bytesSaltados++;
+        }
+    }
+    bytesSaltados += (int)(total - pos);   
+    delete[] buf;
+    return n;
+}
+
+FILE* migrarPlanillaVieja(FILE* vieja, const char* nombreArchivo) {
+    static ComandaVieja v[MAX_VIEJAS];
+    int saltados = 0;
+    int n = leerPlanillaVieja(vieja, v, MAX_VIEJAS, saltados);
+
+    cout << "Se recuperaron " << n << " ventas de la planilla anterior." << endl;
+    if (saltados > 0)
+        cout << "AVISO: " << saltados << " bytes danados/incompletos no se pueden recuperar." << endl;
+    cout << "Se convertira al formato actual (se pierde el detalle de productos, "
+         << "se conservan mozo, cantidad y comision)." << endl;
+    cout << "Migrar y continuar? (s/n): ";
+    char r;
+    cin >> r;
+    cin.ignore(1000, '\n');
+    if (r != 's' && r != 'S') return NULL;
+
+    fclose(vieja);
+
+    char base[60];
+    strcpy(base, nombreArchivo);
+    int largo = (int)strlen(base);
+    if (largo > 4) base[largo - 4] = '\0';      
+
+    char respaldo[120];
+    strcpy(respaldo, base);
+    strcat(respaldo, "_viejo.dat");
+    for (int k = 2; ; k++) {
+        FILE* t = fopen(respaldo, "rb");
+        if (!t) break;
+        fclose(t);
+        strcpy(respaldo, base);
+        strcat(respaldo, "_viejo");
+        agregarNumero(respaldo, k, 0);
+        strcat(respaldo, ".dat");
+    }
+    if (rename(nombreArchivo, respaldo) != 0) {
+        cout << "No se pudo crear el respaldo." << endl;
+        return NULL;
+    }
+    cout << "Original guardado como: " << respaldo << endl;
+
+    FILE* nueva = fopen(nombreArchivo, "wb+");
+    if (!nueva) { cout << "No se pudo crear " << nombreArchivo << endl; return NULL; }
+
+    for (int i = 0; i < n; i++) {
+        Comanda c;
+        c.idMozo = v[i].idMozo;
+        c.codigoProducto = 0;            
+        c.cantidad = v[i].cantidad;
+        c.comision = v[i].total * PORC_COMISION;
+        fwrite(&c, sizeof(Comanda), 1, nueva);
+    }
+    fflush(nueva);
+    cout << "Planilla migrada al formato actual." << endl;
+    return nueva;
+}
+
+int main() {
+    cout.setf(ios::fixed);
+    cout.precision(2);
+    int dd, mm, aaaa;
+    cout << "Ingrese la fecha de hoy (dd mm aaaa)" << endl;
+    cin >> dd;
+    cin >> mm;
+    cin >> aaaa;
+    cin.ignore(1000, '\n');
+
+    char nombreArchivo[60];
+    strcpy(nombreArchivo, "comandas_");
+    agregarNumero(nombreArchivo, dd, 2);
+    strcat(nombreArchivo, "-");
+    agregarNumero(nombreArchivo, mm, 2);
+    strcat(nombreArchivo, "-");
+    agregarNumero(nombreArchivo, aaaa, 4);
+    strcat(nombreArchivo, ".dat");
+
+    FILE* planilla = fopen(nombreArchivo, "rb+");
+    if (!planilla) {
+        planilla = fopen(nombreArchivo, "wb+");
+        if (!planilla) { cout << "No se pudo crear " << nombreArchivo << endl; return 1; }
+        cout << "Planilla nueva creada: " << nombreArchivo << endl;
+    } else if (esFormatoViejo(planilla)) {
+        cout << "Planilla en formato anterior detectada: " << nombreArchivo << endl;
+        planilla = migrarPlanillaVieja(planilla, nombreArchivo);
+        if (!planilla) return 0;
+    } else {
+        cout << "Planilla existente abierta: " << nombreArchivo << endl;
+    }
+
+    char seguir = 's';
+
+    while (seguir == 's' || seguir == 'S') {
+        cout << "     " << "Nueva venta" << "     " << endl;
+
+        Mozo mozo;
+        int idMozo;
+        cout << "Numero de mozo: ";
+        cin >> idMozo;
+        cin.ignore(1000, '\n');
+
+        if (!buscarMozo(idMozo, mozo)) {
+            cout << "Mozo inexistente." << endl;
+        } else {
+            bool autenticado = false;
+            for (int intento = 1; intento <= 3 && !autenticado; intento++) {
+                char clave[50];
+                cout << "Clave: ";
+                cin.getline(clave, 50);
+                if (validarClave(mozo.password, clave)) autenticado = true;
+                else cout << "Clave incorrecta (" << intento << "/3)" << endl;
             }
-}
 
-void mostrarPlanilla(const char* titulo, const char* fecha, comanda* d, int n,
-                     producto* p, int nP, mozo* m, int nM){
-    cout << "\n================ " << titulo << " ================\n";
-    printf("%-11s %-4s %-15s %-6s %-14s %5s %10s %10s\n",
-           "Fecha", "Id", "Mozo", "Cod", "Producto", "Cant", "Total", "Comision");
-    float totalDia = 0, comisionDia = 0;
-    for(int i = 0; i < n; i++){
-        int pp = buscarProducto(p, nP, d[i].codigoProducto);
-        int pm = buscarMozo(m, nM, d[i].idMozo);
-        float total = (pp >= 0) ? p[pp].precio * d[i].cantidad : 0;
-        printf("%-11s %-4d %-15s %-6d %-14s %5d %10.2f %10.2f\n",
-               fecha, d[i].idMozo, (pm >= 0) ? m[pm].nombre : "?", d[i].codigoProducto,
-               (pp >= 0) ? p[pp].descripcion : "?", d[i].cantidad, total, d[i].comision);
-        totalDia += total;
-        comisionDia += d[i].comision;
-    }
-    printf("%-11s %-4s %-15s %-6s %-14s %5s %10.2f %10.2f\n", "", "", "TOTAL DIA", "", "", "", totalDia, comisionDia);
-}
+            if (autenticado) {
+                cout << "Bienvenido/a " << mozo.nombre << endl;
 
-void mostrarComisiones(comanda* d, int n, mozo* m, int nM){
-    cout << "\n---------------- Comision por mozo ----------------\n";
-    for(int i = 0; i < nM; i++){
-        float suma = 0;
-        for(int j = 0; j < n; j++)
-            if(d[j].idMozo == m[i].idMozo) suma += d[j].comision;
-        m[i].totalComision = suma;
-        printf("%-3d %-20s %10.2f\n", m[i].idMozo, m[i].nombre, m[i].totalComision);
-    }
-}
+                int items = 0;
+                double totalVenta = 0, comisionVenta = 0;
 
-void mostrarInventario(producto* p, int n){
-    cout << "\n---------------- Inventario actualizado ----------------\n";
-    printf("%-6s %-20s %10s %8s\n", "Cod", "Descripcion", "Precio", "Stock");
-    for(int i = 0; i < n; i++)
-        printf("%-6d %-20s %10.2f %8d\n", p[i].codigo, p[i].descripcion, p[i].precio, p[i].stockActual);
-}
+                cout << "Cargue los productos (codigo 0 para terminar)" << endl;
+                while (items < MAX_ITEMS) {
+                    int cod, cant;
+                    cout << "Codigo de producto: ";
+                    cin >> cod;
+                    if (cod == 0) break;
 
-// ---------------------------------------------------------------- main
-int main(){
-    mozo mozos[MAX_MOZOS];
-    producto prods[MAX_PROD];
-    static comanda dia[MAX_DIA];
+                    Producto p;
+                    if (!buscarProducto(cod, p)) {
+                        cout << "Producto inexistente." << endl;
+                        continue;
+                    }
+                    
+                    cout << "  " << p.descripcion << " - $" << p.precio << endl;
+                    cout << "Cantidad: ";
+                    cin >> cant;
+                    if (cant <= 0) { cout << "Cantidad invalida." << endl; continue; }
 
-    int nM = cargarMozos(mozos);
-    int nP = cargarInventario(prods);
-    if(nM == 0 || nP == 0){
-        cout << "No se pudo leer mozos.dat o inventario.dat.\n";
-        return 1;
-    }
+                    if (cant > p.stockActual) {
+                        cout << "No hay suficientes existencias (disponible: "
+                             << p.stockActual << ")" << endl;
+                        continue;
+                    }
 
-    char fecha[11];
-    pedirFecha(fecha);
-    if(entradaCerrada) return 1;
+                    if (!descontarStock(p.codigo, cant)) {
+                        cout << "No se pudo descontar el stock." << endl;
+                        continue;
+                    }
 
-    char archivo[40];
-    sprintf(archivo, "comandas_%s.dat", fecha);
-    bool reparado;
-    int nD = cargarDia(archivo, dia, prods, nP, reparado);
-    cout << "Archivo " << archivo << ": " << nD << " comandas previas.\n";
-    if(reparado)
-        cout << "Aviso: el ultimo registro estaba incompleto (sin comision); se recalculo como 10% del total y quedara corregido al guardar.\n";
-    if(nD > 0)
-        mostrarPlanilla("COMANDAS PREVIAS DEL DIA", fecha, dia, nD, prods, nP, mozos, nM);
+                    Comanda c;
+                    c.idMozo = mozo.idMozo;
+                    c.codigoProducto = p.codigo;
+                    c.cantidad = cant;
+                    c.comision = p.precio * cant * PORC_COMISION;
+                    fseek(planilla, 0, SEEK_END);
+                    fwrite(&c, sizeof(Comanda), 1, planilla);
+                    fflush(planilla);
 
-    int ventas = 0;
-    while(!entradaCerrada){
-        cout << "\n--- Nueva venta (codigo 0 para terminar) ---\n";
-        int cod;
-        if(!leerEntero("Codigo de producto: ", cod)){
-            if(!entradaCerrada) cout << "Dato invalido.\n";
-            continue;
-        }
-        if(cod == 0) break;
+                    totalVenta += p.precio * cant;
+                    comisionVenta += c.comision;
+                    items++;
+                }
+                cin.ignore(1000, '\n');
 
-        int pos = buscarProducto(prods, nP, cod);
-        if(pos < 0){ cout << "Producto inexistente.\n"; continue; }
-        printf("%s - $%.2f - stock: %d\n", prods[pos].descripcion, prods[pos].precio, prods[pos].stockActual);
-
-        comanda c;
-        c.codigoProducto = cod;
-        if(!leerEntero("Cantidad: ", c.cantidad) || c.cantidad <= 0){
-            if(!entradaCerrada) cout << "Cantidad invalida. Venta cancelada.\n";
-            continue;
-        }
-        if(c.cantidad > prods[pos].stockActual){
-            cout << "Stock insuficiente. Venta cancelada.\n";
-            continue;
+                if (items > 0) {
+                    cout << "Total de la venta: $" << totalVenta << endl;
+                    cout << "Comision (10%): $" << comisionVenta << endl;
+                    cout << "Venta registrada." << endl;
+                } else {
+                    cout << "Venta sin productos, no se registra." << endl;
+                }
+            } else {
+                cout << "Acceso denegado." << endl;
+            }
         }
 
-        float total = prods[pos].precio * c.cantidad;
-        c.comision = total * PORC_COMISION;
-        printf("Total: $%.2f  (comision del mozo 10%%: $%.2f)\n", total, c.comision);
-
-        if(!leerEntero("Id del mozo: ", c.idMozo)){
-            if(!entradaCerrada) cout << "Dato invalido. Venta cancelada.\n";
-            continue;
-        }
-        if(!validarMozo(mozos, nM, c.idMozo)){
-            if(!entradaCerrada) cout << "Mozo no validado. Venta cancelada.\n";
-            continue;
-        }
-        if(nD >= MAX_DIA){
-            cout << "La planilla del dia esta llena.\n";
-            break;
-        }
-
-        // la venta pasa a la planilla del dia
-        dia[nD++] = c;
-        prods[pos].stockActual -= c.cantidad;   // solo las ventas de esta sesion descuentan stock
-        ventas++;
-        cout << "Venta registrada.\n";
+        cout << "Otra venta? (s/n): ";
+        cin >> seguir;
+        cin.ignore(1000, '\n');
     }
 
-    // cierre: inventario, planilla ordenada y pantalla
-    ordenarPorMozo(dia, nD);
-    if(!guardarInventario(prods, nP)) cout << "Error al guardar inventario.dat\n";
-    if(!guardarDia(archivo, dia, nD))  cout << "Error al guardar " << archivo << "\n";
+    ordenarPlanilla(planilla);
+    cout << "Planilla " << nombreArchivo << " guardada y ordenada por mozo." << endl;
 
-    cout << "\nVentas cargadas en esta sesion: " << ventas << "\n";
-    mostrarPlanilla("PLANILLA DEL DIA (ordenada por mozo)", fecha, dia, nD, prods, nP, mozos, nM);
-    mostrarComisiones(dia, nD, mozos, nM);
-    mostrarInventario(prods, nP);
+    mostrarPlanilla(planilla, nombreArchivo);
+    fclose(planilla);
     return 0;
 }
