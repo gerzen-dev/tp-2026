@@ -10,65 +10,62 @@ struct Comanda{
 	float comision;
 };
 
-void ordenarporId(const char* nombrePlanillaSemanal){
+void apareo(const char* nombrePlanillaSemanal, const char* nombrePlanillaDia, const char* nombrePlanillaTemporal){
+	
+    FILE* a = fopen(nombrePlanillaSemanal, "rb");
+    FILE* b = fopen(nombrePlanillaDia, "rb");
+    FILE* c = fopen(nombrePlanillaTemporal, "wb");
+
+    Comanda ra, rb;
     
-	FILE *archivoD = fopen(nombrePlanillaSemanal, "rb");
-    if(archivoD == NULL){
-        cout << "El archivo no existe" << endl;
-    }
+    int la = 0;
+    if(a != NULL){
+	 la = fread(&ra, sizeof(Comanda), 1, a);
+	}
+    int lb = fread(&rb, sizeof(Comanda), 1, b);
 
-    fseek(archivoD, 0, SEEK_END);
-    int n = ftell(archivoD) / sizeof(Comanda);
-    fseek(archivoD, 0, SEEK_SET);
-
-    Comanda *cso = new Comanda[n];
-    fread(cso, sizeof(Comanda), n, archivoD);
-    fclose(archivoD);
-
-
-    for(int i = 0; i < n - 1; i++){
-        for(int j = 0; j < n - 1 - i; j++){
-            if(cso[j].idMozo > cso[j+1].idMozo){
-                Comanda temp = cso[j];
-                cso[j] = cso[j+1];
-                cso[j+1] = temp;
-            }
+    while(la == 1 && lb == 1){
+        if(ra.idMozo <= rb.idMozo){
+            fwrite(&ra, sizeof(Comanda), 1, c);
+            la = fread(&ra, sizeof(Comanda), 1, a);
+        } else {
+            fwrite(&rb, sizeof(Comanda), 1, c);
+            lb = fread(&rb, sizeof(Comanda), 1, b);
         }
     }
+    while(la == 1){
+        fwrite(&ra, sizeof(Comanda), 1, c);
+        la = fread(&ra, sizeof(Comanda), 1, a);
+    }
+    while(lb == 1){
+        fwrite(&rb, sizeof(Comanda), 1, c);
+        lb = fread(&rb, sizeof(Comanda), 1, b);
+    }
 
-    archivoD = fopen(nombrePlanillaSemanal, "wb");
-    fwrite(cso, sizeof(Comanda), n, archivoD);
-    fclose(archivoD);
+    if(a != NULL){
+    	fclose(a);	
+	} 
+    fclose(b);
+    fclose(c);
+}
 
-    delete[] cso;
-
-}	
+void copiar(const char* nombrePlanillaTemporal, const char* nombrePlanillaSemanal){
+	
+    FILE* archivoOrigen = fopen(nombrePlanillaTemporal, "rb");
+    FILE* archivoDestino = fopen(nombrePlanillaSemanal, "wb");
+    
+    Comanda csd;
+    while(fread(&csd, sizeof(Comanda), 1, archivoOrigen) == 1){
+        fwrite(&csd, sizeof(Comanda), 1, archivoDestino);
+    }
+    fclose(archivoOrigen);
+    fclose(archivoDestino);
+}
 
 void crearArchivo(const char* nombrePlanillaSemanal, const char* nombrePlanillaDia){
-	
-	FILE* archivoCrear = fopen(nombrePlanillaSemanal,"ab");
-	FILE* archivoLeer = fopen(nombrePlanillaDia,"rb");
-	
-	if(archivoLeer == NULL){
-        cout << "El archivo no existe" << endl;
-    }
-	if(archivoCrear == NULL){
-        cout << "El archivo no se pudo crear" << endl;
-    }
-    
-	Comanda cs;
-	Comanda cd;
-	while(fread(&cd, sizeof(Comanda),1,archivoLeer)==1){
-		cs.idMozo = cd.idMozo;
-		cs.codigoProducto = cd.codigoProducto;
-		cs.cantidad = cd.cantidad;
-		cs.comision = cd.comision;
-		fwrite(&cs,sizeof(Comanda),1,archivoCrear);
-	}
-	fclose(archivoCrear);
-	fclose(archivoLeer);
-	cout<<"Planilla agregada."<<endl;
-	
+	apareo(nombrePlanillaSemanal, nombrePlanillaDia, "temp_semanal.dat");  
+    copiar("temp_semanal.dat", nombrePlanillaSemanal);   
+    cout<<"Planilla agregada."<<endl;
 }
 
 int main(){
@@ -97,8 +94,6 @@ int main(){
 		cout<<"¿Desea agregar mas planillas diarias al semanal?(1 para continuar/0 para finalizar programa)"<<endl<<"Respuesta: ";
 		cin>>respuesta;
 	}
-	
-	ordenarporId(nombrePlanillaSemanal);
 	
 	return 0;
 	
