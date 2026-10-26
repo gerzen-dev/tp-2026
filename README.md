@@ -22,8 +22,7 @@ En este programa, recibe n cantidad de planillas diarias que fueron traídas des
 usuario que ingrese el nombre del archivo semanal (respetando el formato "comandas_semana_sX-mm.dat") donde se colocará el contenido de las planillas diarias.
 Acto seguido se le pregunta al usuario si desea agregar los archivos diarios. En caso negativo, el programa finaliza y no se crea ningun archivo, mientras que
 si ocurre lo contrario (respondemos con un Si(1)) entramos a un bucle while donde se nos solicitará el nombre de los archivos diarios (siguiendo el formato 
-"comandas_dd-mm-aaaa.dat"). Se llama a la función crearArchivo donde abrimos la planilla diaria en modo lectura, y la semanal, en modo append. Ahi se escribe
-el contenido de la planilla diaria dentro del archivo semanal. Una vez finalizado eso, se le consulta al usuario si desea seguir agregando más archivos al
+"comandas_dd-mm-aaaa.dat"). Se llama a la función crearArchivo donde se ejecutará 2 funciones, las cuales consiste en utilizar el patrón algorítmico de apareo y después, reescribir lo obtenido en el apareo en el archivo semanal. Una vez finalizado eso, se le consulta al usuario si desea seguir agregando más archivos al
 comandas_semana. Si se niega(respondiendo con un 0) se sale del bucle while y se llama a una función encargada de ordenar el Archivo semanal recien creado
 mediante ordenamiento burbuja y por id de Mozo. Este archivo recién creado será utilizado en el programa Resumen.cpp.
 
