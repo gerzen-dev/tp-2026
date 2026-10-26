@@ -153,59 +153,59 @@ bool crearArchivosDiarios(char fechas[][11], int cantidadFechas) {
 }
 
 bool distribuirComandas(Mozo mozos[], int cantidadMozos) {
-    FILE* historico = fopen("comandas_historicas.dat", "rb");
 
-    if (historico == NULL) {
-        cout << "Error al abrir comandas_historicas.dat" << endl;
-        return false;
-    }
+    for (int m = 0; m < cantidadMozos; m++) {
 
-    ComandaHistorica historica;
+        FILE* historico = fopen("comandas_historicas.dat", "rb");
 
-    while (fread(&historica, sizeof(ComandaHistorica), 1, historico) == 1) {
-
-        int posMozo = buscarMozo(mozos, cantidadMozos, historica.NombreMozo);
-
-        if (posMozo == -1) {
-            cout << "Mozo no encontrado: " << historica.NombreMozo << endl;
-            fclose(historico);
+        if (historico == NULL) {
+            cout << "Error al abrir comandas_historicas.dat" << endl;
             return false;
         }
 
-        Comanda comanda;
-        memset(&comanda, 0, sizeof(Comanda));
-        comanda.idMozo = mozos[posMozo].idMozo;
-        comanda.codigoProducto = historica.codigoProducto;
-        comanda.cantidad = historica.cantidad;
-        comanda.comision = historica.comision;
+        ComandaHistorica historica;
 
-        char nombreArchivo[40];
-        armarNombreDiario(nombreArchivo, historica.fecha);
+        while (fread(&historica, sizeof(ComandaHistorica), 1, historico) == 1) {
 
-        FILE* diario = fopen(nombreArchivo, "ab");
+            if (strcmp(historica.NombreMozo, mozos[m].nombre) != 0) {
+                continue;
+            }
 
-        if (diario == NULL) {
-            cout << "Error al abrir " << nombreArchivo << endl;
-            fclose(historico);
-            return false;
-        }
+            Comanda comanda;
+            memset(&comanda, 0, sizeof(Comanda));
+            comanda.idMozo = mozos[m].idMozo;
+            comanda.codigoProducto = historica.codigoProducto;
+            comanda.cantidad = historica.cantidad;
+            comanda.comision = historica.comision;
 
-        if (fwrite(&comanda, sizeof(Comanda), 1, diario) != 1) {
-            cout << "Error al escribir " << nombreArchivo << endl;
+            char nombreArchivo[40];
+            armarNombreDiario(nombreArchivo, historica.fecha);
+
+            FILE* diario = fopen(nombreArchivo, "ab");
+
+            if (diario == NULL) {
+                cout << "Error al abrir " << nombreArchivo << endl;
+                fclose(historico);
+                return false;
+            }
+
+            if (fwrite(&comanda, sizeof(Comanda), 1, diario) != 1) {
+                cout << "Error al escribir " << nombreArchivo << endl;
+                fclose(diario);
+                fclose(historico);
+                return false;
+            }
+
             fclose(diario);
-            fclose(historico);
-            return false;
         }
 
-        fclose(diario);
-    }
+        bool errorLectura = ferror(historico);
+        fclose(historico);
 
-    bool errorLectura = ferror(historico);
-    fclose(historico);
-
-    if (errorLectura) {
-        cout << "Error al leer el historico" << endl;
-        return false;
+        if (errorLectura) {
+            cout << "Error al leer el historico" << endl;
+            return false;
+        }
     }
 
     return true;
